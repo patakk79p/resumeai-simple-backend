@@ -165,12 +165,14 @@ const sendTokenResponse = (user, statusCode, res) => {
     expires: new Date(
       Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
     ),
-    httpOnly: true
+    httpOnly: true,
+    sameSite: 'None',  // Allow cross-site cookies
+    secure: true       // Cookies only sent over HTTPS
   };
 
-  if (process.env.NODE_ENV === 'production') {
-    options.secure = true;
-    options.sameSite = 'None'; // Important for cross-site cookies
+  // In development, allow non-secure cookies for testing
+  if (process.env.NODE_ENV === 'development') {
+    options.secure = false;
   }
 
   console.log('Setting cookie with options:', JSON.stringify({

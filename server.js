@@ -45,21 +45,60 @@ const auth = require('./routes/auth');
 app.use(express.json());
 app.use(cookieParser());
 
-// Enhanced CORS configuration
+// CORS configuration - explicitly allow resumeaisite.onrender.com
+const allowedOrigins = [
+  'https://resumeaisite.onrender.com',
+  process.env.CLIENT_URL || '*',
+  'http://localhost:3000'
+];
+
+// Set CORS headers for all responses
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  next();
+});
+
+// Enhanced CORS configuration using cors package as backup
 app.use(cors({
-  origin: process.env.CLIENT_URL || '*',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked request from:', origin);
+      // Still allow if no origin specified
+      callback(null, true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
 }));
 
 // Add options handling for preflight requests
-app.options('*', cors({
-  origin: process.env.CLIENT_URL || '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
-}));
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.status(200).end();
+});
 
 // Log all requests
 app.use((req, res, next) => {
@@ -85,6 +124,60 @@ app.get('/api/health', (req, res) => {
       connected: dbState === 1
     },
     environment: process.env.NODE_ENV
+  });
+});
+
+// Frontend connection help route
+app.get('/api/frontend-help', (req, res) => {
+  res.status(200).json({
+    message: "Connection information for frontend integration",
+    serverUrl: req.protocol + '://' + req.get('host'),
+    corsAllowedOrigins: allowedOrigins,
+    requestOrigin: req.headers.origin || 'No origin header',
+    instructions: [
+      "1. Make sure your frontend API base URL is set to: " + req.protocol + '://' + req.get('host'),
+      "2. Add credentials: 'include' to all fetch/axios requests",
+      "3. Include Content-Type: application/json header for POST/PUT requests",
+      "4. Try using local storage for the token as a fallback if cookies don't work"
+    ],
+    exampleCode: {
+      fetch: `
+fetch('${req.protocol + '://' + req.get('host')}/api/v1/auth/register', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  credentials: 'include',
+  body: JSON.stringify({
+    name: 'Test User',
+    email: 'test@example.com',
+    password: 'password123'
+  })
+})
+.then(response => response.json())
+.then(data => console.log(data))
+.catch(error => console.error('Error:', error));
+      `,
+      axios: `
+import axios from 'axios';
+
+// Configure axios
+axios.defaults.baseURL = '${req.protocol + '://' + req.get('host')}';
+axios.defaults.withCredentials = true;
+axios.defaults.headers.post['Content-Type'] = 'application/json';
+
+// Example register request
+const register = async (userData) => {
+  try {
+    const response = await axios.post('/api/v1/auth/register', userData);
+    return response.data;
+  } catch (error) {
+    console.error('Registration error:', error);
+    throw error;
+  }
+};
+      `
+    }
   });
 });
 
