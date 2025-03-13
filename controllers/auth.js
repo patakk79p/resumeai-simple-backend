@@ -5,7 +5,28 @@ const User = require('../models/User');
 // @access  Public
 exports.register = async (req, res) => {
   try {
+    console.log('Register request received:', JSON.stringify(req.body, null, 2));
+    
+    // Validate request body
     const { name, email, password } = req.body;
+    
+    if (!name || !email || !password) {
+      console.log('Missing required fields');
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide name, email and password'
+      });
+    }
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      console.log('User already exists with email:', email);
+      return res.status(400).json({
+        success: false,
+        error: 'Email already in use'
+      });
+    }
 
     // Create user
     const user = await User.create({
@@ -14,11 +35,14 @@ exports.register = async (req, res) => {
       password
     });
 
+    console.log('User created successfully:', user._id);
     sendTokenResponse(user, 201, res);
   } catch (err) {
+    console.error('Register error:', err.message);
     res.status(400).json({
       success: false,
-      error: err.message
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 };
@@ -28,10 +52,16 @@ exports.register = async (req, res) => {
 // @access  Public
 exports.login = async (req, res) => {
   try {
+    console.log('Login request received:', JSON.stringify({
+      email: req.body.email,
+      passwordProvided: !!req.body.password
+    }, null, 2));
+    
     const { email, password } = req.body;
 
     // Validate email & password
     if (!email || !password) {
+      console.log('Missing email or password');
       return res.status(400).json({
         success: false,
         error: 'Please provide an email and password'
@@ -42,27 +72,34 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
+      console.log('No user found with email:', email);
       return res.status(401).json({
         success: false,
         error: 'Invalid credentials'
       });
     }
 
+    console.log('User found:', user._id);
+    
     // Check if password matches
     const isMatch = await user.matchPassword(password);
 
     if (!isMatch) {
+      console.log('Password does not match for user:', user._id);
       return res.status(401).json({
         success: false,
         error: 'Invalid credentials'
       });
     }
 
+    console.log('Password matched, login successful');
     sendTokenResponse(user, 200, res);
   } catch (err) {
+    console.error('Login error:', err.message);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 };
@@ -71,6 +108,8 @@ exports.login = async (req, res) => {
 // @route   GET /api/v1/auth/logout
 // @access  Private
 exports.logout = (req, res) => {
+  console.log('Logout request received');
+  
   res.cookie('token', 'none', {
     expires: new Date(Date.now() + 10 * 1000),
     httpOnly: true
@@ -87,6 +126,8 @@ exports.logout = (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
+    console.log('Get me request for user:', req.user.id);
+    
     const user = await User.findById(req.user.id);
 
     res.status(200).json({
@@ -94,6 +135,7 @@ exports.getMe = async (req, res) => {
       data: user
     });
   } catch (err) {
+    console.error('Get me error:', err.message);
     res.status(500).json({
       success: false,
       error: err.message
@@ -101,10 +143,23 @@ exports.getMe = async (req, res) => {
   }
 };
 
+// @desc    Test auth route
+// @route   GET /api/v1/auth/test
+// @access  Public
+exports.testAuth = (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Auth routes are working',
+    timestamp: new Date().toISOString()
+  });
+};
+
 // Get token from model, create cookie and send response
 const sendTokenResponse = (user, statusCode, res) => {
   // Create token
   const token = user.getSignedJwtToken();
+  
+  console.log('Generated JWT token for user:', user._id);
 
   const options = {
     expires: new Date(
@@ -115,7 +170,13 @@ const sendTokenResponse = (user, statusCode, res) => {
 
   if (process.env.NODE_ENV === 'production') {
     options.secure = true;
+    options.sameSite = 'None'; // Important for cross-site cookies
   }
+
+  console.log('Setting cookie with options:', JSON.stringify({
+    ...options,
+    expires: options.expires.toISOString()
+  }));
 
   res
     .status(statusCode)
