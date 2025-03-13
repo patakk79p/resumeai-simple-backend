@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResumeAI Authentication Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #333;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      cursor: pointer;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f7f7f7;
+      border-radius: 5px;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ResumeAI Authentication Test</h1>
+    
+    <div id="authStatus">
+      <p>Checking authentication status...</p>
+    </div>
+    
+    <div id="loginForm">
+      <h2>Login</h2>
+      <div class="form-group">
+        <label for="loginEmail">Email:</label>
+        <input type="email" id="loginEmail" placeholder="Enter your email">
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Password:</label>
+        <input type="password" id="loginPassword" placeholder="Enter your password">
+      </div>
+      <button id="loginButton">Login</button>
+    </div>
+    
+    <div id="registerForm">
+      <h2>Register</h2>
+      <div class="form-group">
+        <label for="registerName">Name:</label>
+        <input type="text" id="registerName" placeholder="Enter your name">
+      </div>
+      <div class="form-group">
+        <label for="registerEmail">Email:</label>
+        <input type="email" id="registerEmail" placeholder="Enter your email">
+      </div>
+      <div class="form-group">
+        <label for="registerPassword">Password:</label>
+        <input type="password" id="registerPassword" placeholder="Enter your password">
+      </div>
+      <button id="registerButton">Register</button>
+    </div>
+    
+    <div id="logoutSection" style="display: none;">
+      <h2>User Profile</h2>
+      <div id="userInfo"></div>
+      <button id="logoutButton">Logout</button>
+    </div>
+    
+    <div class="result" id="result"></div>
+  </div>
+  
+  <script src="/auth-client.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const authStatus = document.getElementById('authStatus');
+      const loginForm = document.getElementById('loginForm');
+      const registerForm = document.getElementById('registerForm');
+      const logoutSection = document.getElementById('logoutSection');
+      const userInfo = document.getElementById('userInfo');
+      const result = document.getElementById('result');
+      
+      // Check initial authentication status
+      try {
+        const user = await ResumeAIAuth.getCurrentUser();
+        if (user) {
+          showAuthenticatedUI(user);
+        } else {
+          showUnauthenticatedUI();
+        }
+      } catch (error) {
+        showError('Error checking authentication status: ' + error.message);
+        showUnauthenticatedUI();
+      }
+      
+      // Login form handler
+      document.getElementById('loginButton').addEventListener('click', async () => {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        
+        if (!email || !password) {
+          showError('Please enter both email and password');
+          return;
+        }
+        
+        try {
+          result.innerHTML = 'Logging in...';
+          const response = await ResumeAIAuth.login({ email, password });
+          showSuccess('Login successful!');
+          showAuthenticatedUI(response.data);
+        } catch (error) {
+          showError('Login failed: ' + error.message);
+        }
+      });
+      
+      // Register form handler
+      document.getElementById('registerButton').addEventListener('click', async () => {
+        const name = document.getElementById('registerName').value;
+        const email = document.getElementById('registerEmail').value;
+        const password = document.getElementById('registerPassword').value;
+        
+        if (!name || !email || !password) {
+          showError('Please fill out all fields');
+          return;
+        }
+        
+        try {
+          result.innerHTML = 'Registering...';
+          const response = await ResumeAIAuth.register({ name, email, password });
+          showSuccess('Registration successful!');
+          showAuthenticatedUI(response.data);
+        } catch (error) {
+          showError('Registration failed: ' + error.message);
+        }
+      });
+      
+      // Logout handler
+      document.getElementById('logoutButton').addEventListener('click', async () => {
+        try {
+          await ResumeAIAuth.logout();
+          showSuccess('Logout successful!');
+          showUnauthenticatedUI();
+        } catch (error) {
+          showError('Logout failed: ' + error.message);
+        }
+      });
+      
+      // Helper functions
+      function showAuthenticatedUI(user) {
+        authStatus.innerHTML = '<p>You are logged in!</p>';
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'none';
+        logoutSection.style.display = 'block';
+        
+        userInfo.innerHTML = `
+          <p><strong>Name:</strong> ${user.name}</p>
+          <p><strong>Email:</strong> ${user.email}</p>
+          <p><strong>Role:</strong> ${user.role}</p>
+          <p><strong>ID:</strong> ${user._id}</p>
+        `;
+      }
+      
+      function showUnauthenticatedUI() {
+        authStatus.innerHTML = '<p>You are not logged in</p>';
+        loginForm.style.display = 'block';
+        registerForm.style.display = 'block';
+        logoutSection.style.display = 'none';
+        userInfo.innerHTML = '';
+      }
+      
+      function showError(message) {
+        result.innerHTML = `<div class="error">${message}</div>`;
+      }
+      
+      function showSuccess(message) {
+        result.innerHTML = `<div>${message}</div>`;
+      }
+    });
+  </script>
+</body>
+</html> 

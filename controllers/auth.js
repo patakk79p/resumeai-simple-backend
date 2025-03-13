@@ -161,6 +161,7 @@ const sendTokenResponse = (user, statusCode, res) => {
   
   console.log('Generated JWT token for user:', user._id);
 
+  // Setup cookie options
   const options = {
     expires: new Date(
       Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
@@ -180,17 +181,25 @@ const sendTokenResponse = (user, statusCode, res) => {
     expires: options.expires.toISOString()
   }));
 
+  // Always send the token in the response body 
+  // This allows the frontend to store it in localStorage as a fallback
+  const responseData = {
+    success: true,
+    token,
+    tokenExpires: options.expires,
+    data: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    }
+  };
+
+  console.log('Sending response with token and user data');
+  
+  // Send cookie and JSON response
   res
     .status(statusCode)
     .cookie('token', token, options)
-    .json({
-      success: true,
-      token,
-      data: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    });
+    .json(responseData);
 }; 

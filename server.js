@@ -41,68 +41,41 @@ setInterval(() => {
 // Route files
 const auth = require('./routes/auth');
 
-// Middleware
-app.use(express.json());
-app.use(cookieParser());
-
-// CORS configuration - explicitly allow resumeaisite.onrender.com
-const allowedOrigins = [
-  'https://resumeaisite.onrender.com',
-  process.env.CLIENT_URL || '*',
-  'http://localhost:3000'
-];
-
-// Set CORS headers for all responses
+// --- CORS Configuration (simplified) ---
+// This middleware needs to be before any other middleware that might send responses
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  // Allow all origins for now (you can restrict this later)
+  res.header('Access-Control-Allow-Origin', 'https://resumeaisite.onrender.com');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
   
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS preflight request');
     return res.status(200).end();
   }
   
   next();
 });
 
-// Enhanced CORS configuration using cors package as backup
+// Basic middleware
+app.use(express.json());
+app.use(cookieParser());
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked request from:', origin);
-      // Still allow if no origin specified
-      callback(null, true);
-    }
-  },
+  origin: 'https://resumeaisite.onrender.com',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
 }));
 
-// Add options handling for preflight requests
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.status(200).end();
-});
+// Serve static files from the public directory
+app.use(express.static('public'));
 
 // Log all requests
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.originalUrl}`.blue);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
   next();
 });
 
@@ -127,13 +100,33 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// No-CORS test route
+app.get('/api/no-cors-test', (req, res) => {
+  // This route should work even without CORS
+  res.json({ message: 'This endpoint works without requiring CORS' });
+});
+
+// CORS test route with explicit headers
+app.get('/api/cors-test', (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://resumeaisite.onrender.com');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  res.json({ 
+    message: 'CORS test successful',
+    receivedOrigin: req.headers.origin || 'No origin in request',
+    receivedHeaders: req.headers,
+    sentHeaders: res.getHeaders()
+  });
+});
+
 // Frontend connection help route
 app.get('/api/frontend-help', (req, res) => {
   res.status(200).json({
     message: "Connection information for frontend integration",
     serverUrl: req.protocol + '://' + req.get('host'),
-    corsAllowedOrigins: allowedOrigins,
+    corsAllowedOrigins: ['https://resumeaisite.onrender.com'],
     requestOrigin: req.headers.origin || 'No origin header',
+    currentTime: new Date().toISOString(),
     instructions: [
       "1. Make sure your frontend API base URL is set to: " + req.protocol + '://' + req.get('host'),
       "2. Add credentials: 'include' to all fetch/axios requests",
