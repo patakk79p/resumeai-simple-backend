@@ -16,27 +16,26 @@ const app = express();
 // Port
 const PORT = process.env.PORT || 8000;
 
-// IMPORTANT: THIS IS THE CRITICAL CORS FIX
-// Handle all OPTIONS requests first, before any other middleware
-app.options('*', (req, res) => {
-  console.log('Handling OPTIONS preflight request for:', req.originalUrl);
-  res.set({
-    'Access-Control-Allow-Origin': 'https://resumeaisite.onrender.com',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Max-Age': '86400' // 24 hours
-  }).status(200).end();
-});
+// ===============================
+// CORS CONFIGURATION - SIMPLIFIED
+// ===============================
+// 1. First enable CORS for preflight requests (OPTIONS)
+app.options('*', cors({
+  origin: 'https://resumeaisite.onrender.com',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
+  maxAge: 86400 // 24 hours
+}));
 
-// Apply Access-Control headers to ALL responses
-app.use((req, res, next) => {
-  res.set({
-    'Access-Control-Allow-Origin': 'https://resumeaisite.onrender.com',
-    'Access-Control-Allow-Credentials': 'true'
-  });
-  next();
-});
+// 2. Then enable CORS for actual requests
+app.use(cors({
+  origin: 'https://resumeaisite.onrender.com',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
+  maxAge: 86400 // 24 hours
+}));
 
 // Connect to database
 connectDB()
@@ -66,15 +65,6 @@ const auth = require('./routes/auth');
 // Basic middleware
 app.use(express.json());
 app.use(cookieParser());
-
-// Simplified CORS setup
-app.use(cors({
-  origin: 'https://resumeaisite.onrender.com',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
-  maxAge: 86400 // 24 hours
-}));
 
 // Serve static files from the public directory
 app.use(express.static('public'));
@@ -115,9 +105,6 @@ app.get('/api/no-cors-test', (req, res) => {
 
 // CORS test route with explicit headers
 app.get('/api/cors-test', (req, res) => {
-  res.header('Access-Control-Allow-Origin', 'https://resumeaisite.onrender.com');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
   res.json({ 
     message: 'CORS test successful',
     receivedOrigin: req.headers.origin || 'No origin in request',
@@ -192,25 +179,8 @@ app.get('/api/debug', (req, res) => {
   });
 });
 
-// Middleware for wrapping routes with CORS headers
-const withCors = (handler) => {
-  return (req, res, next) => {
-    res.set({
-      'Access-Control-Allow-Origin': 'https://resumeaisite.onrender.com',
-      'Access-Control-Allow-Credentials': 'true'
-    });
-    handler(req, res, next);
-  };
-};
-
-// Mount routers with CORS wrapper
-app.use('/api/v1/auth', (req, res, next) => {
-  res.set({
-    'Access-Control-Allow-Origin': 'https://resumeaisite.onrender.com',
-    'Access-Control-Allow-Credentials': 'true'
-  });
-  auth(req, res, next);
-});
+// Mount routers
+app.use('/api/v1/auth', auth);
 
 // Handle 404 errors
 app.use((req, res, next) => {

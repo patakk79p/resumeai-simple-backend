@@ -198,11 +198,7 @@ const sendTokenResponse = (user, statusCode, res) => {
 
   console.log('Sending response with token and user data');
   
-  // Set CORS headers first to make sure they are included
-  res.set({
-    'Access-Control-Allow-Origin': 'https://resumeaisite.onrender.com',
-    'Access-Control-Allow-Credentials': 'true'
-  });
+  // Remove direct CORS header setting - let the middleware handle it
   
   // Send cookie and JSON response
   res
