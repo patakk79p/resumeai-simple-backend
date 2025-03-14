@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResumeAI Authentication Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      padding-top: 2rem;
+      background-color: #f8f9fa;
+    }
+    .card {
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-bottom: 1.5rem;
+    }
+    .card-header {
+      background-color: #f1f8ff;
+      font-weight: 500;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 1rem;
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .text-small {
+      font-size: 0.875rem;
+    }
+    .btn-action {
+      min-width: 120px;
+    }
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .status-indicator.authenticated {
+      background-color: #28a745;
+    }
+    .status-indicator.unauthenticated {
+      background-color: #dc3545;
+    }
+    .auth-status {
+      font-weight: 500;
+    }
+    .token-info {
+      word-break: break-all;
+    }
+    #alertContainer {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      max-width: 350px;
+      z-index: 1050;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-10">
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">ResumeAI Authentication Demo</h2>
+            <div>
+              <span class="status-indicator" id="authStatusIndicator"></span>
+              <span class="auth-status" id="authStatus">Checking...</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <p class="lead">This demo demonstrates the authentication system using the new <code>ResumeAIAuth</code> client.</p>
+            <div class="alert alert-info">
+              <i class="bi bi-info-circle"></i> The authentication client automatically handles token refresh and provides a seamless experience.
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <!-- Authentication Actions -->
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">Authentication Actions</div>
+              <div class="card-body">
+                <!-- Register Form -->
+                <div class="mb-4">
+                  <h5>Register</h5>
+                  <form id="registerForm">
+                    <div class="mb-3">
+                      <input type="text" class="form-control" id="registerName" placeholder="Name" required>
+                    </div>
+                    <div class="mb-3">
+                      <input type="email" class="form-control" id="registerEmail" placeholder="Email" required>
+                    </div>
+                    <div class="mb-3">
+                      <input type="password" class="form-control" id="registerPassword" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-action">Register</button>
+                  </form>
+                </div>
+
+                <hr>
+                
+                <!-- Login Form -->
+                <div class="mb-4">
+                  <h5>Login</h5>
+                  <form id="loginForm">
+                    <div class="mb-3">
+                      <input type="email" class="form-control" id="loginEmail" placeholder="Email" required>
+                    </div>
+                    <div class="mb-3">
+                      <input type="password" class="form-control" id="loginPassword" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-action">Login</button>
+                  </form>
+                </div>
+
+                <hr>
+
+                <!-- Actions when authenticated -->
+                <div class="mb-4">
+                  <h5>User Actions</h5>
+                  <div class="d-grid gap-2">
+                    <button id="getMeBtn" class="btn btn-info btn-action">Get Profile</button>
+                    <button id="refreshTokenBtn" class="btn btn-warning btn-action">Refresh Token</button>
+                    <button id="logoutBtn" class="btn btn-danger btn-action">Logout</button>
+                    <button id="logoutAllBtn" class="btn btn-outline-danger btn-action">Logout All Devices</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Token Information -->
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">Authentication Status</div>
+              <div class="card-body">
+                <h5>Current User</h5>
+                <pre id="currentUser">Not authenticated</pre>
+
+                <h5>Authentication Details</h5>
+                <div class="mb-2">
+                  <strong>Access Token:</strong>
+                  <div class="token-info" id="accessToken">None</div>
+                </div>
+                <div class="mb-2">
+                  <strong>Refresh Token:</strong>
+                  <div class="token-info" id="refreshToken">None</div>
+                </div>
+                <div class="mb-2">
+                  <strong>Token Expiry:</strong>
+                  <div id="tokenExpiry">N/A</div>
+                </div>
+
+                <h5>API Response</h5>
+                <pre id="apiResponse">No API call made yet</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alert Container -->
+  <div id="alertContainer"></div>
+
+  <!-- Auth Client Script -->
+  <script src="auth-client-v2.js"></script>
+  
+  <!-- Demo Application Script -->
+  <script>
+    // Initialize authentication client
+    ResumeAIAuth.configure({
+      apiUrl: window.location.hostname === 'localhost' 
+        ? 'http://localhost:8000/api/v1'
+        : 'https://resumeai-simple-backend.onrender.com/api/v1'
+    });
+
+    // DOM Elements
+    const authStatusIndicator = document.getElementById('authStatusIndicator');
+    const authStatus = document.getElementById('authStatus');
+    const currentUser = document.getElementById('currentUser');
+    const accessTokenEl = document.getElementById('accessToken');
+    const refreshTokenEl = document.getElementById('refreshToken');
+    const tokenExpiryEl = document.getElementById('tokenExpiry');
+    const apiResponseEl = document.getElementById('apiResponse');
+    
+    // Form Elements
+    const registerForm = document.getElementById('registerForm');
+    const loginForm = document.getElementById('loginForm');
+    
+    // Button Elements
+    const getMeBtn = document.getElementById('getMeBtn');
+    const refreshTokenBtn = document.getElementById('refreshTokenBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const logoutAllBtn = document.getElementById('logoutAllBtn');
+
+    // Helper Functions
+    function showAlert(message, type = 'info') {
+      const alertDiv = document.createElement('div');
+      alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+      alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      `;
+      
+      document.getElementById('alertContainer').appendChild(alertDiv);
+      
+      // Auto dismiss after 5 seconds
+      setTimeout(() => {
+        alertDiv.classList.remove('show');
+        setTimeout(() => alertDiv.remove(), 150);
+      }, 5000);
+    }
+
+    function updateAuthStatus() {
+      const isAuth = ResumeAIAuth.isAuthenticated();
+      
+      // Update status indicator
+      authStatusIndicator.className = isAuth 
+        ? 'status-indicator authenticated' 
+        : 'status-indicator unauthenticated';
+      
+      authStatus.textContent = isAuth ? 'Authenticated' : 'Not Authenticated';
+      
+      // Update token display
+      const accessToken = localStorage.getItem('resumeai_access_token');
+      const refreshToken = localStorage.getItem('resumeai_refresh_token');
+      const tokenExpiry = localStorage.getItem('resumeai_token_expiry');
+      
+      accessTokenEl.textContent = accessToken 
+        ? JSON.parse(accessToken).substring(0, 20) + '...' 
+        : 'None';
+      
+      refreshTokenEl.textContent = refreshToken 
+        ? JSON.parse(refreshToken).substring(0, 20) + '...' 
+        : 'None';
+      
+      tokenExpiryEl.textContent = tokenExpiry 
+        ? new Date(JSON.parse(tokenExpiry)).toLocaleString() 
+        : 'N/A';
+      
+      // Fetch and display current user
+      if (isAuth) {
+        ResumeAIAuth.getCurrentUser()
+          .then(user => {
+            if (user) {
+              currentUser.textContent = JSON.stringify(user, null, 2);
+            }
+          })
+          .catch(error => {
+            console.error('Error getting current user:', error);
+          });
+      } else {
+        currentUser.textContent = 'Not authenticated';
+      }
+    }
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      updateAuthStatus();
+      
+      // Register form submission
+      registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const name = document.getElementById('registerName').value;
+        const email = document.getElementById('registerEmail').value;
+        const password = document.getElementById('registerPassword').value;
+        
+        try {
+          const result = await ResumeAIAuth.register({
+            name,
+            email,
+            password
+          });
+          
+          if (result.success) {
+            showAlert(`Registration successful! Welcome, ${result.user.name}!`, 'success');
+            registerForm.reset();
+            updateAuthStatus();
+          } else {
+            showAlert(`Registration failed: ${result.error}`, 'danger');
+          }
+        } catch (error) {
+          showAlert(`Registration error: ${error.message}`, 'danger');
+        }
+      });
+      
+      // Login form submission
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        
+        try {
+          const result = await ResumeAIAuth.login(email, password);
+          
+          if (result.success) {
+            showAlert(`Login successful! Welcome back, ${result.user.name}!`, 'success');
+            loginForm.reset();
+            updateAuthStatus();
+          } else {
+            showAlert(`Login failed: ${result.error}`, 'danger');
+          }
+        } catch (error) {
+          showAlert(`Login error: ${error.message}`, 'danger');
+        }
+      });
+      
+      // Get current user
+      getMeBtn.addEventListener('click', async () => {
+        try {
+          const user = await ResumeAIAuth.getCurrentUser();
+          
+          if (user) {
+            apiResponseEl.textContent = JSON.stringify(user, null, 2);
+            showAlert('User profile fetched successfully', 'success');
+          } else {
+            apiResponseEl.textContent = 'Not authenticated';
+            showAlert('You are not authenticated', 'warning');
+          }
+          
+          updateAuthStatus();
+        } catch (error) {
+          showAlert(`Error getting user profile: ${error.message}`, 'danger');
+        }
+      });
+      
+      // Refresh token
+      refreshTokenBtn.addEventListener('click', async () => {
+        try {
+          const success = await ResumeAIAuth.refreshToken();
+          
+          if (success) {
+            apiResponseEl.textContent = 'Token refreshed successfully!';
+            showAlert('Token refreshed successfully', 'success');
+          } else {
+            apiResponseEl.textContent = 'Token refresh failed';
+            showAlert('Token refresh failed', 'warning');
+          }
+          
+          updateAuthStatus();
+        } catch (error) {
+          showAlert(`Error refreshing token: ${error.message}`, 'danger');
+        }
+      });
+      
+      // Logout
+      logoutBtn.addEventListener('click', async () => {
+        try {
+          await ResumeAIAuth.logout();
+          apiResponseEl.textContent = 'Logged out successfully';
+          showAlert('You have been logged out', 'info');
+          updateAuthStatus();
+        } catch (error) {
+          showAlert(`Error logging out: ${error.message}`, 'danger');
+        }
+      });
+      
+      // Logout all devices
+      logoutAllBtn.addEventListener('click', async () => {
+        try {
+          await ResumeAIAuth.logoutAll();
+          apiResponseEl.textContent = 'Logged out from all devices';
+          showAlert('You have been logged out from all devices', 'info');
+          updateAuthStatus();
+        } catch (error) {
+          showAlert(`Error logging out from all devices: ${error.message}`, 'danger');
+        }
+      });
+    });
+  </script>
+</body>
+</html> 

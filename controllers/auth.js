@@ -1,17 +1,21 @@
 const User = require('../models/User');
+const tokenUtils = require('../utils/tokenUtils');
+const crypto = require('crypto');
 
-// @desc    Register user
-// @route   POST /api/v1/auth/register
-// @access  Public
+/**
+ * @desc    Register user
+ * @route   POST /api/v1/auth/register
+ * @access  Public
+ */
 exports.register = async (req, res) => {
   try {
     console.log('Register request received:', JSON.stringify(req.body, null, 2));
     
-    // Validate request body
+    // Extract user data from request
     const { name, email, password } = req.body;
     
+    // Validate required fields
     if (!name || !email || !password) {
-      console.log('Missing required fields');
       return res.status(400).json({
         success: false,
         error: 'Please provide name, email and password'
@@ -21,7 +25,6 @@ exports.register = async (req, res) => {
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      console.log('User already exists with email:', email);
       return res.status(400).json({
         success: false,
         error: 'Email already in use'
@@ -36,35 +39,36 @@ exports.register = async (req, res) => {
     });
 
     console.log('User created successfully:', user._id);
-    sendTokenResponse(user, 201, res);
+    
+    // Create tokens
+    await sendTokenResponse(user, 201, res, req);
   } catch (err) {
     console.error('Register error:', err.message);
-    res.status(400).json({
+    res.status(500).json({
       success: false,
-      error: err.message,
+      error: 'Registration failed. Please try again.',
+      message: err.message,
       stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 };
 
-// @desc    Login user
-// @route   POST /api/v1/auth/login
-// @access  Public
+/**
+ * @desc    Login user
+ * @route   POST /api/v1/auth/login
+ * @access  Public
+ */
 exports.login = async (req, res) => {
   try {
-    console.log('Login request received:', JSON.stringify({
-      email: req.body.email,
-      passwordProvided: !!req.body.password
-    }, null, 2));
+    console.log('Login request received for email:', req.body.email);
     
     const { email, password } = req.body;
 
     // Validate email & password
     if (!email || !password) {
-      console.log('Missing email or password');
       return res.status(400).json({
         success: false,
-        error: 'Please provide an email and password'
+        error: 'Please provide email and password'
       });
     }
 
@@ -72,64 +76,145 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
-      console.log('No user found with email:', email);
+      console.log('Login failed: User not found:', email);
       return res.status(401).json({
         success: false,
         error: 'Invalid credentials'
       });
     }
 
-    console.log('User found:', user._id);
-    
-    // Check if password matches
+    // Check password
     const isMatch = await user.matchPassword(password);
-
     if (!isMatch) {
-      console.log('Password does not match for user:', user._id);
+      console.log('Login failed: Invalid password for user:', user._id);
       return res.status(401).json({
         success: false,
         error: 'Invalid credentials'
       });
     }
 
-    console.log('Password matched, login successful');
-    sendTokenResponse(user, 200, res);
+    console.log('Login successful for user:', user._id);
+    
+    // Create tokens
+    await sendTokenResponse(user, 200, res, req);
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({
       success: false,
-      error: err.message,
+      error: 'Login failed. Please try again.',
+      message: err.message,
       stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 };
 
-// @desc    Log user out / clear cookie
-// @route   GET /api/v1/auth/logout
-// @access  Private
-exports.logout = (req, res) => {
-  console.log('Logout request received');
-  
-  res.cookie('token', 'none', {
-    expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true
-  });
-
-  res.status(200).json({
-    success: true,
-    data: {}
-  });
+/**
+ * @desc    Refresh access token
+ * @route   POST /api/v1/auth/refresh-token
+ * @access  Public
+ */
+exports.refreshToken = async (req, res) => {
+  try {
+    // Get refresh token from cookie or request body
+    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'No refresh token provided'
+      });
+    }
+    
+    // Rotate the refresh token
+    const { accessToken, refreshToken: newRefreshToken, user } = 
+      await tokenUtils.rotateRefreshToken(refreshToken, req);
+    
+    // Set cookies
+    setTokenCookies(res, accessToken, newRefreshToken);
+    
+    // Return new tokens
+    return res.status(200).json({
+      success: true,
+      accessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error('Refresh token error:', err.message);
+    
+    if (err.message === 'Token reuse detected') {
+      return res.status(401).json({
+        success: false,
+        error: 'Security breach detected. Please login again.',
+        isSecurityBreach: true
+      });
+    }
+    
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid or expired refresh token'
+    });
+  }
 };
 
-// @desc    Get current logged in user
-// @route   GET /api/v1/auth/me
-// @access  Private
+/**
+ * @desc    Logout user
+ * @route   GET /api/v1/auth/logout
+ * @access  Private
+ */
+exports.logout = async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    
+    // If we have a refresh token, revoke it
+    if (refreshToken) {
+      await tokenUtils.revokeToken(refreshToken, 'manual_logout');
+    }
+    
+    // Clear cookies
+    res.cookie('accessToken', 'none', {
+      expires: new Date(Date.now() + 10 * 1000),
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: 'None',
+      path: '/'
+    });
+    
+    res.cookie('refreshToken', 'none', {
+      expires: new Date(Date.now() + 10 * 1000),
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: 'None',
+      path: '/'
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (err) {
+    console.error('Logout error:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Logout failed'
+    });
+  }
+};
+
+/**
+ * @desc    Get current logged in user
+ * @route   GET /api/v1/auth/me
+ * @access  Private
+ */
 exports.getMe = async (req, res) => {
   try {
-    console.log('Get me request for user:', req.user.id);
-    
     const user = await User.findById(req.user.id);
-
+    
     res.status(200).json({
       success: true,
       data: user
@@ -138,71 +223,125 @@ exports.getMe = async (req, res) => {
     console.error('Get me error:', err.message);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Could not retrieve user information'
     });
   }
 };
 
-// @desc    Test auth route
-// @route   GET /api/v1/auth/test
-// @access  Public
+/**
+ * @desc    Test auth route
+ * @route   GET /api/v1/auth/test
+ * @access  Public
+ */
 exports.testAuth = (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Auth routes are working',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    isAuthenticated: !!req.user,
+    user: req.user ? {
+      id: req.user._id,
+      name: req.user.name,
+      role: req.user.role
+    } : null
   });
 };
 
-// Get token from model, create cookie and send response
-const sendTokenResponse = (user, statusCode, res) => {
-  // Create token
-  const token = user.getSignedJwtToken();
-  
-  console.log('Generated JWT token for user:', user._id);
+/**
+ * @desc    Manually invalidate all user tokens (logout everywhere)
+ * @route   POST /api/v1/auth/logout-all
+ * @access  Private
+ */
+exports.logoutAll = async (req, res) => {
+  try {
+    // Revoke all user tokens
+    const count = await tokenUtils.revokeAllUserTokens(req.user.id, 'manual_logout');
+    
+    // Clear cookies
+    res.cookie('accessToken', 'none', {
+      expires: new Date(Date.now() + 10 * 1000),
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: 'None',
+      path: '/'
+    });
+    
+    res.cookie('refreshToken', 'none', {
+      expires: new Date(Date.now() + 10 * 1000),
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: 'None',
+      path: '/'
+    });
 
-  // Setup cookie options
-  const options = {
-    expires: new Date(
-      Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
-    ),
-    httpOnly: true,
-    sameSite: 'None',  // Allow cross-site cookies
-    secure: true,      // Cookies only sent over HTTPS
-    path: '/'
-  };
-
-  // In development, allow non-secure cookies for testing
-  if (process.env.NODE_ENV === 'development') {
-    options.secure = false;
+    res.status(200).json({
+      success: true,
+      message: `Successfully logged out from all devices. Revoked ${count} tokens.`
+    });
+  } catch (err) {
+    console.error('Logout all error:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Logout from all devices failed'
+    });
   }
+};
 
-  console.log('Setting cookie with options:', JSON.stringify({
-    ...options,
-    expires: options.expires.toISOString()
-  }));
-
-  // Always send the token in the response body 
-  // This allows the frontend to store it in localStorage as a fallback
-  const responseData = {
-    success: true,
-    token,
-    tokenExpires: options.expires,
-    data: {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    }
-  };
-
-  console.log('Sending response with token and user data');
+// Helper function to set cookies for tokens
+const setTokenCookies = (res, accessToken, refreshToken) => {
+  // Access token cookie (short-lived)
+  const accessTokenExpire = process.env.JWT_ACCESS_EXPIRE || '15m';
+  const accessExpireMs = accessTokenExpire.includes('m') 
+    ? parseInt(accessTokenExpire) * 60 * 1000 
+    : parseInt(accessTokenExpire) * 1000;
   
-  // Remove direct CORS header setting - let the middleware handle it
+  res.cookie('accessToken', accessToken, {
+    expires: new Date(Date.now() + accessExpireMs),
+    httpOnly: true,
+    secure: process.env.NODE_ENV !== 'development',
+    sameSite: 'None',
+    path: '/'
+  });
   
-  // Send cookie and JSON response
-  res
-    .status(statusCode)
-    .cookie('token', token, options)
-    .json(responseData);
+  // Refresh token cookie (long-lived)
+  const refreshExpireDays = parseInt(process.env.JWT_REFRESH_EXPIRE_DAYS || '7');
+  const refreshExpireMs = refreshExpireDays * 24 * 60 * 60 * 1000;
+  
+  res.cookie('refreshToken', refreshToken, {
+    expires: new Date(Date.now() + refreshExpireMs),
+    httpOnly: true,
+    secure: process.env.NODE_ENV !== 'development',
+    sameSite: 'None',
+    path: '/'
+  });
+};
+
+// Helper function to create tokens and send response
+const sendTokenResponse = async (user, statusCode, res, req) => {
+  try {
+    // Generate JWT
+    const accessToken = tokenUtils.generateAccessToken(user);
+    
+    // Generate refresh token
+    const { plainToken: refreshToken } = await tokenUtils.createRefreshToken(user, null, req);
+    
+    // Set cookies
+    setTokenCookies(res, accessToken, refreshToken);
+    
+    // Return response
+    return res.status(statusCode).json({
+      success: true,
+      accessToken,
+      refreshToken,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Error creating tokens:', error);
+    throw error;
+  }
 }; 
