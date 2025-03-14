@@ -168,7 +168,8 @@ const sendTokenResponse = (user, statusCode, res) => {
     ),
     httpOnly: true,
     sameSite: 'None',  // Allow cross-site cookies
-    secure: true       // Cookies only sent over HTTPS
+    secure: true,      // Cookies only sent over HTTPS
+    path: '/'
   };
 
   // In development, allow non-secure cookies for testing
@@ -196,6 +197,12 @@ const sendTokenResponse = (user, statusCode, res) => {
   };
 
   console.log('Sending response with token and user data');
+  
+  // Set CORS headers first to make sure they are included
+  res.set({
+    'Access-Control-Allow-Origin': 'https://resumeaisite.onrender.com',
+    'Access-Control-Allow-Credentials': 'true'
+  });
   
   // Send cookie and JSON response
   res
