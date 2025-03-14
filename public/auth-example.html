@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JWT Authentication Example</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      border: 1px solid #ddd;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    .error {
+      color: red;
+      margin-top: 5px;
+    }
+    .success {
+      color: green;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>JWT Authentication Example</h1>
+  
+  <div class="container">
+    <h2>Register</h2>
+    <div id="registerForm">
+      <div class="form-group">
+        <label for="registerName">Name:</label>
+        <input type="text" id="registerName" required>
+      </div>
+      <div class="form-group">
+        <label for="registerEmail">Email:</label>
+        <input type="email" id="registerEmail" required>
+      </div>
+      <div class="form-group">
+        <label for="registerPassword">Password:</label>
+        <input type="password" id="registerPassword" required>
+      </div>
+      <button onclick="register()">Register</button>
+      <div id="registerMessage"></div>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Login</h2>
+    <div id="loginForm">
+      <div class="form-group">
+        <label for="loginEmail">Email:</label>
+        <input type="email" id="loginEmail" required>
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Password:</label>
+        <input type="password" id="loginPassword" required>
+      </div>
+      <button onclick="login()">Login</button>
+      <div id="loginMessage"></div>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Protected Resource</h2>
+    <button onclick="getProfile()">Get My Profile</button>
+    <div id="profileMessage"></div>
+    <pre id="profileData"></pre>
+  </div>
+
+  <script>
+    // API URL - change this to your API URL
+    const API_URL = window.location.hostname === 'localhost' 
+      ? 'http://localhost:8000/api/v1' 
+      : 'https://resumeai-simple-backend.onrender.com/api/v1';
+    
+    // Store the JWT token
+    let token = localStorage.getItem('token');
+    
+    // Register function
+    async function register() {
+      const name = document.getElementById('registerName').value;
+      const email = document.getElementById('registerEmail').value;
+      const password = document.getElementById('registerPassword').value;
+      
+      if (!name || !email || !password) {
+        showMessage('registerMessage', 'Please fill in all fields', 'error');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ name, email, password }),
+          credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          // Store token
+          token = data.token;
+          localStorage.setItem('token', token);
+          
+          showMessage('registerMessage', 'Registration successful!', 'success');
+          
+          // Clear form
+          document.getElementById('registerName').value = '';
+          document.getElementById('registerEmail').value = '';
+          document.getElementById('registerPassword').value = '';
+        } else {
+          showMessage('registerMessage', data.error || 'Registration failed', 'error');
+        }
+      } catch (error) {
+        showMessage('registerMessage', 'Error: ' + error.message, 'error');
+      }
+    }
+    
+    // Login function
+    async function login() {
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      
+      if (!email || !password) {
+        showMessage('loginMessage', 'Please fill in all fields', 'error');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, password }),
+          credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          // Store token
+          token = data.token;
+          localStorage.setItem('token', token);
+          
+          showMessage('loginMessage', 'Login successful!', 'success');
+          
+          // Clear form
+          document.getElementById('loginEmail').value = '';
+          document.getElementById('loginPassword').value = '';
+        } else {
+          showMessage('loginMessage', data.error || 'Login failed', 'error');
+        }
+      } catch (error) {
+        showMessage('loginMessage', 'Error: ' + error.message, 'error');
+      }
+    }
+    
+    // Get profile function
+    async function getProfile() {
+      if (!token) {
+        showMessage('profileMessage', 'You need to login first', 'error');
+        document.getElementById('profileData').textContent = '';
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/auth/me`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showMessage('profileMessage', 'Profile retrieved successfully!', 'success');
+          document.getElementById('profileData').textContent = JSON.stringify(data.data, null, 2);
+        } else {
+          // If token is invalid, clear it
+          if (response.status === 401) {
+            token = null;
+            localStorage.removeItem('token');
+          }
+          
+          showMessage('profileMessage', data.error || 'Failed to get profile', 'error');
+          document.getElementById('profileData').textContent = '';
+        }
+      } catch (error) {
+        showMessage('profileMessage', 'Error: ' + error.message, 'error');
+        document.getElementById('profileData').textContent = '';
+      }
+    }
+    
+    // Helper function to show messages
+    function showMessage(elementId, message, type) {
+      const element = document.getElementById(elementId);
+      element.textContent = message;
+      element.className = type;
+    }
+  </script>
+</body>
+</html> 

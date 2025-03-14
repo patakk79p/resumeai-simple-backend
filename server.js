@@ -6,6 +6,8 @@ const colors = require('colors');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const errorHandler = require('./middleware/error');
+const passport = require('passport');
+const morgan = require('morgan');
 
 // Load env vars
 dotenv.config({ path: './config/config.env' });
@@ -65,6 +67,24 @@ const auth = require('./routes/auth');
 // Basic middleware
 app.use(express.json());
 app.use(cookieParser());
+
+// Dev logging middleware
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
+// Initialize Passport
+app.use(passport.initialize());
+require('./config/passport')();
+
+// Enable CORS
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'https://resumeaisite.onrender.com',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
+  maxAge: 86400
+}));
 
 // Serve static files from the public directory
 app.use(express.static('public'));
@@ -181,6 +201,11 @@ app.get('/api/debug', (req, res) => {
 
 // Mount routers
 app.use('/api/v1/auth', auth);
+
+// Root route
+app.get('/', (req, res) => {
+  res.send('API is running...');
+});
 
 // Handle 404 errors
 app.use((req, res, next) => {
