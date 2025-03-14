@@ -88,13 +88,13 @@ Register a new user
 ```json
 {
   "success": true,
-  "token": "JWT_ACCESS_TOKEN",
+  "accessToken": "JWT_ACCESS_TOKEN",
+  "refreshToken": "REFRESH_TOKEN",
   "user": {
-    "id": "user_id",
+    "_id": "user_id",
     "name": "User Name",
     "email": "user@example.com",
-    "role": "user",
-    "createdAt": "timestamp"
+    "role": "user"
   }
 }
 ```
@@ -117,13 +117,25 @@ Same as register response
 Get a new access token using refresh token
 
 **Request Body:**
-No body needed, uses refresh token cookie
+```json
+{
+  "refreshToken": "REFRESH_TOKEN"
+}
+```
+*Note: The refresh token can also be sent via HTTP-only cookie*
 
 **Response:**
 ```json
 {
   "success": true,
-  "token": "NEW_JWT_ACCESS_TOKEN"
+  "accessToken": "NEW_JWT_ACCESS_TOKEN",
+  "refreshToken": "NEW_REFRESH_TOKEN",
+  "user": {
+    "_id": "user_id",
+    "name": "User Name",
+    "email": "user@example.com",
+    "role": "user"
+  }
 }
 ```
 
@@ -138,14 +150,14 @@ Logout current session
 }
 ```
 
-#### GET /api/v1/auth/logout-all
+#### POST /api/v1/auth/logout-all
 Logout from all devices/sessions
 
 **Response:**
 ```json
 {
   "success": true,
-  "message": "Logged out from all devices"
+  "message": "Successfully logged out from all devices"
 }
 ```
 
@@ -157,7 +169,7 @@ Get current user profile
 {
   "success": true,
   "data": {
-    "id": "user_id",
+    "_id": "user_id",
     "name": "User Name",
     "email": "user@example.com",
     "role": "user",
@@ -203,6 +215,12 @@ if (ResumeAIAuth.isAuthenticated()) {
 // Get current user
 const user = await ResumeAIAuth.getCurrentUser();
 
+// Make an authenticated API request
+const data = await ResumeAIAuth.apiRequest('/some-endpoint', 'GET');
+
+// Refresh token manually (normally happens automatically)
+await ResumeAIAuth.refreshToken();
+
 // Logout
 await ResumeAIAuth.logout();
 
@@ -210,12 +228,19 @@ await ResumeAIAuth.logout();
 await ResumeAIAuth.logoutAll();
 ```
 
-## Testing
+## Demo and Testing
 
-The backend includes test scripts for validating authentication functionality:
+The backend includes test tools for validating authentication functionality:
 
-1. `scripts/test-auth.js` - Tests the API endpoints
-2. `public/auth-demo.html` - Interactive UI for testing authentication flows
+1. **Authentication Test Script** - `scripts/test-auth.js`
+   - Automated test script that validates all authentication endpoints
+   - Tests user registration, login, token refresh, and security features
+   - Run with: `node scripts/test-auth.js`
+
+2. **Interactive Demo** - `public/auth-demo.html`
+   - Browser-based interface for testing authentication flows
+   - Provides a visual interface for registration, login, and other auth functions
+   - Access at: `http://localhost:8000/auth-demo.html`
 
 ## Development
 
@@ -247,6 +272,25 @@ The backend includes test scripts for validating authentication functionality:
    ```
    npm run dev
    ```
+
+## Security Considerations
+
+- Access tokens are short-lived to minimize the impact of token theft
+- Refresh tokens are rotated with each use, allowing for token revocation
+- Token reuse detection helps prevent replay attacks
+- Tokens can be revoked individually or for all user sessions
+- Credentials are never stored in plaintext
+- Sensitive operations require re-authentication
+
+## Integration with Frontend
+
+To integrate with a React frontend:
+
+1. Include the auth client in your application
+2. Configure the client with your API URL
+3. Use the provided methods for authentication flows
+4. Protect routes based on authentication status
+5. Add automatic token refresh before API calls
 
 ## Deployment
 
